@@ -1,10 +1,10 @@
 {
   "name": "@local/dsh-code-mode-plus",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Hybrid tool batching for native DeepSeek Harness sessions.",
   "type": "module",
-  "engines": { "dsh": "~0.2.1-rc.2" },
+  "engines": { "dsh": "~0.2.2-rc.1" },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

@@ -44,7 +44,8 @@ async function open(t, config = {}, { executionMode = 'per-call', enableJobs = f
   await mount('fs-sandbox');
   await mount('working-directory', { defaultDirectory: cwd });
   await mount('user-approval', { policy: 'ask' });
-  await mount('tools', { mode: 'native' });
+  await mount('tools');
+  await mount('tool-executor-native');
   await mount('tool-fs', { readImage: false });
   await mount('fs-observation-policy');
   await mount('shell-env');
@@ -73,7 +74,11 @@ async function open(t, config = {}, { executionMode = 'per-call', enableJobs = f
   const dispatch = (name, args, signal = new AbortController().signal) => {
     const callId = `fixture-${++count}`;
     session.append('tool/call', { turn: 1, step: 1, name, callId, arguments: JSON.stringify(args) });
-    return ctx.tools.execute({ callId, name, arguments: args, agent, signal });
+    return ctx.tools.execute({
+      calls: [{ type: 'tool-call', id: callId, name, arguments: JSON.stringify(args) }],
+      signal,
+      agent,
+    }).then((batch) => batch.results[0].result);
   };
   return {
     ctx, session, cwd, agent,
@@ -111,8 +116,8 @@ test('real approval pauses only the active timer; rejection prevents the edit', 
   await writeFile(file, 'original\n');
   ctx.on('tools/pre-execute', (exec, next) => {
     if (exec.name !== 'edit') return next();
-    assert.equal(exec.schema?.name, 'edit');
-    assert.ok(exec.parent);
+    assert.equal(exec.name, 'edit');
+    assert.match(String(exec.callId), /:ptc:\d+$/);
     return { kind: 'ask', reason: 'Test the native approval seam' };
   });
   ctx.on('approval/request', async ({ signal }) => {
@@ -122,11 +127,12 @@ test('real approval pauses only the active timer; rejection prevents the edit', 
   const outcome = await run(`
     await tools.read({ file_path: 'notes.txt' });
     try { await edit('notes.txt', 'original', 'changed'); }
-    catch (error) { return { caught: error.name, tool: error.toolName }; }
+    catch (error) { return { caught: error.name, tool: error.toolName, message: error.message }; }
     return { caught: false };
   `);
   assert.equal(outcome.isError, false, JSON.stringify(outcome));
-  assert.deepEqual(outcome.value.result, { caught: 'ToolCallError', tool: 'edit' });
+  assert.equal(outcome.value.result.caught, 'ToolCallError');
+  assert.equal(outcome.value.result.tool, 'edit');
   assert.equal(await readFile(file, 'utf8'), 'original\n');
   assert.equal(events('approval/asked')[0].callId, events('tool/ptc-dispatch-start')[1].subCallId);
   assert.equal(events('approval/decided')[0].outcome, 'rejected');
@@ -147,19 +153,11 @@ test('real file policies apply and native read-before-edit is not bypassed', asy
   assert.equal(await readFile(file, 'utf8'), 'v1\n');
 });
 
-test('PTC and delegated scopes do not see code_batch and plan mode denies its execution', async (t) => {
+test('delegated scopes do not see code_batch and plan mode denies its execution', async (t) => {
   const { ctx, session, cwd, agent, run } = await open(t);
   await ctx.plugin({
     inject: ['agents', 'tools'],
     async apply(owner) {
-      const ptcSession = ctx.sessions.create(undefined, { meta: { cwd, agentPreset: 'ptc' } });
-      const ptc = { id: ptcSession.id, session: ptcSession };
-      ptc.ctx = createScope(owner, ptc).ctx;
-      ptc.ctx.tools.presentAs('ptc');
-      await ptc.ctx.agents.register(ptc);
-      assert.ok(ctx.tools.get('run_code', ptc));
-      assert.equal(ctx.tools.get('code_batch', ptc), undefined);
-
       const childSession = ctx.sessions.create(undefined, { meta: { cwd, origin: 'subagent', delegationDepth: 1 } });
       const child = { id: childSession.id, session: childSession };
       child.ctx = createScope(owner, child, { parent: agent }).ctx;

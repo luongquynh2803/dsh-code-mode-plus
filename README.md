@@ -36,6 +36,14 @@ return { changed: file.path, changes: await $`git diff --stat`.text() };
 - A batch runs in the foreground and is non-transactional. Do not rerun a failed batch blindly: completed changes are not rolled back. Use native shell/job tools for long or intentionally detached commands. The bundle rejects explicit job starts and attempts to stop its own auto-promoted shell jobs by their recorded call identity.
 - Plan Mode, unavailable tools, and changed session permissions fail closed for the batch. Approval for one native step does not grant approval to the batch. Tool arguments, bounded previews and edit metadata can still appear in the DSH session log; do not pass secrets through the batch. For full diagnostic artifacts use native tools; this bundle does not implement its own output spill system.
 
+## Compatibility
+
+Targets DSH `0.2.2-rc.1` (separate native tool executors, batch `tools.execute`). Compared with the earlier 0.2.1 line:
+
+- every parked step dispatches through `tools.execute({ calls: [...] })` and reads the settled batch result, because the registry no longer accepts a single-call object;
+- the test composition mounts `tools` plus `tool-executor-native` instead of the removed `tools` `mode` config;
+- a promoted job is matched by either the nested or the top-level call id, because a batch dispatch carries no parent token and `exec.schema` is no longer projected.
+
 ## Limits and maintenance
 
 The bundle defaults to 24 tool calls, 120 seconds of active time, and a 15-minute wall limit. The active budget pauses only while a matching DSH approval request is outstanding. The wall limit and user cancellation keep applying. The PTC subprocess and in-flight calls can take additional time to clean up. Override these bounds on the `local-code-mode-plus` entry in the profile editor if necessary. There is no retained REPL state, nested task scheduling, or MCP binding in this release.

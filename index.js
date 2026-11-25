@@ -137,7 +137,7 @@ async function executeBatch(ctx, args, exec, limits, setAbort) {
       deadline.resume(event.data.id);
     } else if (event.type === 'job/registered' && activeCallId !== undefined &&
         event.data.owner === agent.id && event.data.toolCall?.callId === activeCallId &&
-        event.data.toolCall.rootCallId === exec.rootCallId) {
+        [activeCallId, exec.rootCallId].includes(event.data.toolCall.rootCallId)) {
       activeJobs.add(event.data.jobId);
     } else if (event.type === 'job/settled') {
       activeJobs.delete(event.data.jobId);
@@ -170,17 +170,23 @@ async function executeBatch(ctx, args, exec, limits, setAbort) {
         startedCount += 1;
         activeCallId = subCallId;
         let result;
+        const deferred = [];
+        let concludedTurn = false;
         try {
-          result = await registry.execute({
-            callId: subCallId,
-            rootCallId: exec.rootCallId,
-            name,
-            schema: Object.freeze(schema),
-            arguments: argumentsValue,
-            agent,
-            parent: exec.token,
+          const batch = await registry.execute({
+            calls: [{
+              type: 'tool-call',
+              id: subCallId,
+              name,
+              arguments: JSON.stringify(argumentsValue),
+            }],
             signal: deadline.signal,
+            agent,
           });
+          result = batch.results[0]?.result;
+          if (result === undefined) throw new Error(`${name} settled without a result`);
+          deferred.push(...(batch.additionalContexts ?? []));
+          concludedTurn = batch.concluded === true;
         } catch (error) {
           const message = String(error?.message ?? error);
           result = { isError: true, error: { message }, content: text(message) };
@@ -199,9 +205,9 @@ async function executeBatch(ctx, args, exec, limits, setAbort) {
         }
         logResult(session, head, result);
         settledCount += 1;
-        for (const context of result.additionalContexts ?? []) exec.deferContext(context);
+        for (const context of deferred) exec.deferContext(context);
         if (result.isError) throw new Error(result.error.message);
-        if (result.concludesTurn) {
+        if (concludedTurn) {
           concluded = true;
           exec.concludeTurn();
         }
