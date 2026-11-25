@@ -1,0 +1,38 @@
+{
+  "name": "@local/dsh-code-mode-plus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hybrid tool batching for native DeepSeek Harness sessions.",
+  "type": "module",
+  "engines": { "dsh": "~0.2.1-rc.2" },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "guest.js",
+    "deadline.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "test:dsh": "node --test --test-concurrency=1 test/integration.mjs",
+    "check": "node --check index.js && node --check guest.js && node --check deadline.js && node --check client.js"
+  },
+  "dependencies": { "quickjs-emscripten": "0.32.0" },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": ["@deepseek-ai/dsh-client-ui-tool"]
+    }
+  }
+}

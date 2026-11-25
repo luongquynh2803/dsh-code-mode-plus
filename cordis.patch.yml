@@ -1,0 +1,21 @@
+- insert:
+    - id: local-code-mode-plus-group
+      name: cordis:group
+      group: true
+      isolate:
+        ptcRuntime: true
+      config:
+        - id: local-code-mode-plus-runtime
+          name: '@deepseek-ai/dsh-ptc-runtime-node'
+          config:
+            # A running Homebrew Web host can retain a removed Cellar path after a Node upgrade.
+            launch: !!js >-
+              process.platform === 'darwin' && process.execPath.startsWith('/opt/homebrew/Cellar/node/')
+              ? { kind: 'node-script', executable: '/opt/homebrew/bin/node' }
+              : undefined
+        - id: local-code-mode-plus
+          name: '@local/dsh-code-mode-plus'
+          config:
+            activeTimeoutMs: 120000
+            wallTimeoutMs: 900000
+            maxCalls: 24
